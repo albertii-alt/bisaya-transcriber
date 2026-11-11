@@ -1,0 +1,7 @@
+{
+  "name": "Bisaya Transcriber",
+  "description": "Mobile-first personal transcription tool for long Bisaya/Cebuano audio using Gemini API chunked processing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

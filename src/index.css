@@ -1,0 +1,40 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --system-bg: #F2F2F7;
+    --card-bg: #FFFFFF;
+    --system-blue: #007AFF;
+    --system-green: #34C759;
+    --system-orange: #FF9500;
+    --system-red: #FF3B30;
+    --separator: rgba(60, 60, 67, 0.18);
+  }
+
+  .dark {
+    --system-bg: #000000;
+    --card-bg: #1C1C1E;
+    --system-blue: #0A84FF;
+    --system-green: #32D74B;
+    --system-orange: #FF9F0A;
+    --system-red: #FF453A;
+    --separator: rgba(84, 84, 88, 0.36);
+  }
+
+  html {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+    text-size-adjust: 100%;
+  }
+
+  /* Support iOS safe area */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 16px);
+  }
+}
+
