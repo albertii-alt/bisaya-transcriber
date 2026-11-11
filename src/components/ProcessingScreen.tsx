@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { CircularProgress } from './CircularProgress';
 import {
   ClockIcon,
@@ -7,9 +7,11 @@ import {
   SpinnerIcon,
   XMarkIcon,
   RefreshCwIcon,
+  CopyIcon,
 } from './Icons';
 import { AudioChunk } from '../types';
 import { formatTime } from '../utils/audio';
+import { DetailedErrorInfo } from '../utils/api';
 
 interface ProcessingScreenProps {
   fileName: string;
@@ -22,6 +24,7 @@ interface ProcessingScreenProps {
   wakeLockActive: boolean;
   statusMessage: string;
   errorMessage?: string;
+  errorDetails?: DetailedErrorInfo | null;
   onCancel: () => void;
   onRetry?: () => void;
 }
@@ -37,9 +40,12 @@ export const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
   wakeLockActive,
   statusMessage,
   errorMessage,
+  errorDetails,
   onCancel,
   onRetry,
 }) => {
+  const [copiedError, setCopiedError] = useState(false);
+
   // Calculate aggregate percentage
   // Phase 1 (Upload): 0% to 25%
   // Phase 2 (Prepare): 25% to 30%
@@ -63,6 +69,29 @@ export const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
   else if (phase === 'transcribing') {
     ringLabel = `Part ${Math.min(currentChunkIndex + 1, totalChunks)} / ${totalChunks}`;
   }
+
+  const handleCopyDetails = async () => {
+    const report = [
+      '--- Bisaya Transcriber Diagnostic Report ---',
+      `File: ${fileName}`,
+      `Stage: ${errorDetails?.stage || 'Unknown stage'}`,
+      `Status Code: ${errorDetails?.status !== undefined ? errorDetails.status : 'N/A'}`,
+      errorDetails?.chunkNumber ? `Chunk: ${errorDetails.chunkNumber} of ${errorDetails.totalChunks || totalChunks}` : null,
+      `Error Message: ${errorDetails?.serverMessage || errorMessage || 'Unknown error'}`,
+      `Time: ${errorDetails?.timestamp || new Date().toISOString()}`,
+      errorDetails?.rawDetails ? `Raw Details: ${errorDetails.rawDetails}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    try {
+      await navigator.clipboard.writeText(report);
+      setCopiedError(true);
+      setTimeout(() => setCopiedError(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy error details', err);
+    }
+  };
 
   return (
     <div className="flex-1 w-full max-w-[640px] mx-auto px-5 py-6 flex flex-col items-center">
@@ -104,35 +133,69 @@ export const ProcessingScreen: React.FC<ProcessingScreenProps> = ({
           {statusMessage}
         </h3>
         <p className="text-[13px] text-[#8E8E93] dark:text-[#98989D] mt-1">
-          {phase === 'uploading' && `Uploading bytes directly to Gemini Files API (${uploadPercent}%)`}
+          {phase === 'uploading' && `Uploading via server-relayed chunks (${uploadPercent}%)`}
           {phase === 'preparing' && 'Verifying audio file state with Gemini...'}
           {phase === 'transcribing' && `Verbatim transcription in ~6-minute chunks`}
           {phase === 'retrying_split' && `Low WPM detected: Sub-dividing chunk into 3-min slices for full coverage`}
         </p>
       </div>
 
-      {/* Error Card if failed */}
-      {phase === 'error' && errorMessage && (
-        <div className="w-full mb-6 p-4 rounded-2xl bg-[#FF3B30]/10 border border-[#FF3B30]/30 text-left">
+      {/* Detailed Error Card if failed */}
+      {phase === 'error' && (errorMessage || errorDetails) && (
+        <div className="w-full mb-6 p-4 rounded-2xl bg-[#FF3B30]/10 border border-[#FF3B30]/30 text-left shadow-xs">
           <div className="flex items-start gap-3">
             <AlertTriangleIcon size={20} className="text-[#FF3B30] shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <h4 className="text-[14px] font-semibold text-[#FF3B30] dark:text-[#FF453A]">
-                Transcription Paused
-              </h4>
-              <p className="text-[12px] text-[#1C1C1E] dark:text-[#F2F2F7] mt-1 leading-relaxed">
-                {errorMessage}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="text-[14px] font-semibold text-[#FF3B30] dark:text-[#FF453A]">
+                  {errorDetails?.stage ? `${errorDetails.stage} Error` : 'Transcription Paused'}
+                </h4>
+                {errorDetails?.status !== undefined && (
+                  <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-[#FF3B30]/20 text-[#FF3B30] dark:text-[#FF453A] font-medium">
+                    HTTP {errorDetails.status}
+                  </span>
+                )}
+                {errorDetails?.chunkNumber && errorDetails?.totalChunks && (
+                  <span className="text-[11px] font-medium text-[#8E8E93]">
+                    Chunk {errorDetails.chunkNumber}/{errorDetails.totalChunks}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-[13px] text-[#1C1C1E] dark:text-[#F2F2F7] mt-1.5 leading-relaxed font-mono break-words bg-black/5 dark:bg-white/5 p-2 rounded-xl">
+                {errorDetails?.serverMessage || errorMessage}
               </p>
-              {onRetry && (
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {onRetry && (
+                  <button
+                    type="button"
+                    onClick={onRetry}
+                    className="h-[36px] px-4 rounded-xl bg-[#007AFF] hover:bg-[#0071E3] text-white text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-transform cursor-pointer"
+                  >
+                    <RefreshCwIcon size={14} />
+                    <span>Retry Current Stage</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
-                  onClick={onRetry}
-                  className="mt-3 h-[36px] px-4 rounded-xl bg-[#007AFF] text-white text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-transform"
+                  onClick={handleCopyDetails}
+                  className="h-[36px] px-3.5 rounded-xl bg-white dark:bg-[#2C2C2E] border border-[#E5E5EA] dark:border-[#3A3A3C] text-[#1C1C1E] dark:text-[#F2F2F7] text-xs font-semibold flex items-center gap-1.5 active:scale-95 transition-transform cursor-pointer"
                 >
-                  <RefreshCwIcon size={14} />
-                  <span>Retry Current Part</span>
+                  {copiedError ? (
+                    <>
+                      <CheckCircleIcon size={14} className="text-[#34C759]" />
+                      <span className="text-[#34C759]">Copied details!</span>
+                    </>
+                  ) : (
+                    <>
+                      <CopyIcon size={14} />
+                      <span>Copy details</span>
+                    </>
+                  )}
                 </button>
-              )}
+              </div>
             </div>
           </div>
         </div>

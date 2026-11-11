@@ -9,7 +9,8 @@ Built with **React**, **TypeScript**, **Vite**, **Tailwind CSS v4**, and **Verce
 ## Key Features
 
 - **Full Verbatim Transcription**: No speaker labels, no timestamps, no summaries, no translation, no skips.
-- **Direct-to-Gemini Resumable Uploads**: Audio bytes upload directly from your browser to Google via resumable upload URLs, completely bypassing Vercel's 4.5 MB body limit.
+- **Server-Relayed Chunked Uploads**: Slices audio files into 3 MiB binary chunks posted to `/api/upload-chunk`, which safely relays them to Google Gemini Files API. This completely avoids browser CORS restrictions and stays comfortably within Vercel's 4.5 MB body limit.
+- **Auto-Resume & Exponential Backoff**: On any network hitch or 5xx, retries up to 6 times with exponential backoff (2s, 4s, 8s, 16s...), querying `/api/upload-status` to resume from the exact confirmed byte offset.
 - **Smart Chunking & Completeness Assurance**: Slices long audio into sequential ~6-minute chunks with context continuity (`previousTail`). If a chunk drops below ~60 wpm, has an unexpected finish reason, or is empty, it automatically sub-divides the range in half and retries.
 - **Resume Anywhere**: Progress is saved to `localStorage` after every chunk. You can safely close or reload your tab and resume where you left off.
 - **Screen Wake Lock**: Automatically requests a screen lock on iOS Safari to keep the screen on while processing.
@@ -56,7 +57,7 @@ Under the **Environment Variables** section in the Vercel dashboard, add the fol
 | `GEMINI_MODEL` | *Optional.* Model used for audio transcription. Defaults to `gemini-3.5-transcribe`. | `gemini-3.5-transcribe` |
 | `CHUNK_MINUTES` | *Optional.* Length of each chunk in minutes. Defaults to `6`. | `6` |
 
-> **Note on Vercel Function Timeout**: `vercel.json` is pre-configured with `"maxDuration": 300` (5 minutes) for all `/api/**/*.ts` routes.
+> **Note on Vercel Function Timeout**: `vercel.json` is configured with `"maxDuration": 60` for `/api/upload-chunk.ts` and `/api/upload-status.ts`, and `"maxDuration": 300` (5 minutes) for long audio chunk transcription `/api/**/*.ts`.
 
 ### 4. Deploy
 Click **Deploy**. Once built, open the deployed URL on your iPhone Safari, tap **Share** → **Add to Home Screen** for a full native PWA-like experience!

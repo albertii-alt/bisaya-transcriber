@@ -17,12 +17,20 @@ async function startServer() {
 
   // Import API handlers
   const uploadSessionHandler = (await import('./api/upload-session.js')).default;
+  const uploadChunkHandler = (await import('./api/upload-chunk.js')).default;
+  const uploadStatusHandler = (await import('./api/upload-status.js')).default;
   const fileStatusHandler = (await import('./api/file-status.js')).default;
   const transcribeHandler = (await import('./api/transcribe.js')).default;
   const healthHandler = (await import('./api/health.js')).default;
 
   // Mount API endpoints
   app.post('/api/upload-session', (req, res) => uploadSessionHandler(req, res));
+  app.post(
+    '/api/upload-chunk',
+    express.raw({ type: 'application/octet-stream', limit: '10mb' }),
+    (req, res) => uploadChunkHandler(req, res)
+  );
+  app.post('/api/upload-status', (req, res) => uploadStatusHandler(req, res));
   app.all('/api/file-status', (req, res) => fileStatusHandler(req, res));
   app.post('/api/transcribe', (req, res) => transcribeHandler(req, res));
   app.all('/api/health', (req, res) => healthHandler(req, res));

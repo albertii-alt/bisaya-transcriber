@@ -22,13 +22,16 @@ import {
 } from './utils/storage';
 import {
   createUploadSession,
-  uploadFileToGemini,
+  uploadFileInChunks,
   pollFileStatus,
   transcribeChunk,
   checkApiHealth,
+  DetailedErrorInfo,
+  ApiError,
 } from './utils/api';
 import {
   formatTime,
+  formatBytes,
   getPreviousTail,
   calculateWpm,
   inferMimeType,
@@ -84,6 +87,7 @@ export default function App() {
   const [currentChunkIndex, setCurrentChunkIndex] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('Initializing...');
   const [processingError, setProcessingError] = useState<string | undefined>();
+  const [detailedError, setDetailedError] = useState<DetailedErrorInfo | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [wakeLockActive, setWakeLockActive] = useState<boolean>(false);
 
@@ -252,6 +256,8 @@ export default function App() {
   const runTranscriptionEngine = async (session: TranscriptionSession, audioFile?: File | null) => {
     isCancelledRef.current = false;
     setScreen('processing');
+    setProcessingError(undefined);
+    setDetailedError(null);
     startTimer();
     await acquireWakeLock();
 
@@ -275,11 +281,18 @@ export default function App() {
 
         if (isCancelledRef.current) return;
 
-        // 2. Direct upload bytes via XMLHttpRequest
-        setStatusMessage('Uploading audio directly to Gemini...');
-        const uploadResult = await uploadFileToGemini(audioFile, uploadUrl, (pct) => {
-          setUploadPercent(pct);
-        });
+        // 2. Server-relayed chunked upload to /api/upload-chunk (bypasses CORS & Vercel limits)
+        setStatusMessage(`Starting upload for ${formatBytes(audioFile.size)}...`);
+        const uploadResult = await uploadFileInChunks(
+          audioFile,
+          uploadUrl,
+          passcode,
+          (progress) => {
+            setUploadPercent(progress.percent);
+            setStatusMessage(progress.statusText);
+          },
+          () => isCancelledRef.current
+        );
 
         if (isCancelledRef.current) return;
 
@@ -336,6 +349,8 @@ export default function App() {
             endSec: chunk.endSec,
             previousTail,
             passcode,
+            chunkNumber: i + 1,
+            totalChunks: chunks.length,
           });
 
           if (isCancelledRef.current) break;
@@ -368,6 +383,8 @@ export default function App() {
                 endSec: midSec,
                 previousTail,
                 passcode,
+                chunkNumber: i + 1,
+                totalChunks: chunks.length,
               });
 
               await sleep(1500); // polite delay
@@ -381,6 +398,8 @@ export default function App() {
                 endSec: chunk.endSec,
                 previousTail: sub1Tail,
                 passcode,
+                chunkNumber: i + 1,
+                totalChunks: chunks.length,
               });
 
               const combinedText = `${sub1.text.trim()}\n\n${sub2.text.trim()}`.trim();
@@ -423,7 +442,18 @@ export default function App() {
           saveSession(currentSessionState);
           setActiveSession({ ...currentSessionState });
           setProcessingPhase('error');
-          setProcessingError(`Part ${i + 1} failed: ${chunkError.message || 'Error occurred'}`);
+          const msg = chunkError.message || `Part ${i + 1} failed`;
+          setProcessingError(msg);
+          setDetailedError(
+            chunkError.details || {
+              stage: `Transcription Part ${i + 1}/${chunks.length}`,
+              status: chunkError.status,
+              chunkNumber: i + 1,
+              totalChunks: chunks.length,
+              serverMessage: msg,
+              timestamp: new Date().toISOString(),
+            }
+          );
           return;
         }
       }
@@ -445,7 +475,16 @@ export default function App() {
     } catch (error: any) {
       console.error('Fatal transcription error:', error);
       setProcessingPhase('error');
-      setProcessingError(error.message || 'An unexpected error occurred during transcription.');
+      const msg = error.message || 'An unexpected error occurred during transcription.';
+      setProcessingError(msg);
+      setDetailedError(
+        error.details || {
+          stage: 'Processing Pipeline',
+          status: error.status,
+          serverMessage: msg,
+          timestamp: new Date().toISOString(),
+        }
+      );
     } finally {
       stopTimer();
       releaseWakeLock();
@@ -598,6 +637,7 @@ export default function App() {
             wakeLockActive={wakeLockActive}
             statusMessage={statusMessage}
             errorMessage={processingError}
+            errorDetails={detailedError}
             onCancel={handleCancelProcessing}
             onRetry={handleRetryCurrentPart}
           />

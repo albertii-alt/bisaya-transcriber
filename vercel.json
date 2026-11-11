@@ -2,6 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
   "functions": {
+    "api/upload-chunk.ts": {
+      "maxDuration": 60
+    },
+    "api/upload-status.ts": {
+      "maxDuration": 60
+    },
     "api/**/*.ts": {
       "maxDuration": 300
     }
